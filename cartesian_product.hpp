@@ -22,9 +22,11 @@ public:
 
   cartesian_product_view(V1 master, V2 slave) : v1_{std::move(master)}, v2_{std::move(slave)} {}
 
-  iterator begin() { return iterator{*this}; }
-  sentinel end() { return sentinel{rng::end(v1_)}; }
+  constexpr auto begin() { return iterator{*this}; }
+  constexpr auto end() { return sentinel{rng::end(v1_)}; }
 
+  constexpr auto begin() const { return iterator{*this}; }
+  constexpr auto end() const { return sentinel{rng::end(v1_)}; }
 private:
   V1 v1_;
   V2 v2_;
@@ -43,25 +45,25 @@ concept tuple_type = requires(T v) {
   {std::get<0>(v)};
 };
 
-namespace {
+namespace tuple_utils{
   template<typename T1, typename T2>
-  requires(tuple_type<T1> && !tuple_type<T2>) static decltype(auto) join_values(T1 &&a, T2 &&b) {
+  requires(tuple_type<T1> && !tuple_type<T2>) inline decltype(auto) join_values(T1 &&a, T2 &&b) {
     return std::tuple_cat(std::forward<T1>(a), std::tie(std::forward<T2>(b)));
   }
 
   template<typename T1, typename T2>
-  requires(!tuple_type<T1> && tuple_type<T2>) static decltype(auto) join_values(T1 &&a, T2 &&b) {
+  requires(!tuple_type<T1> && tuple_type<T2>) inline decltype(auto) join_values(T1 &&a, T2 &&b) {
     return std::tuple_cat(std::tie(std::forward<T1>(a)), std::forward<T2>(b));
   }
 
   template<typename T1, typename T2>
-  requires(tuple_type<T1> &&tuple_type<T2>) static decltype(auto) join_values(T1 &&a, T2 &&b) {
+  requires(tuple_type<T1> &&tuple_type<T2>) inline decltype(auto) join_values(T1 &&a, T2 &&b) {
     return std::tuple_cat(std::forward<T1>(a), std::forward<T2>(b));
   }
 
   template<typename T1, typename T2>
-  requires(!tuple_type<T1> && !tuple_type<T2>) static decltype(auto) join_values(T1 &&a, T2 &&b) {
-    return std::tuple_cat(std::tie(a), std::tie(b));
+  requires(!tuple_type<T1> && !tuple_type<T2>) inline decltype(auto) join_values(T1 &&a, T2 &&b) {
+    return std::tuple_cat(std::tie(std::forward<T1>(a)), std::tie(std::forward<T2>(b)));
   }
 }
 
@@ -74,16 +76,19 @@ private:
   rng::iterator_t<V2> iter_slave_;
 
 public:
-  using value_type = decltype(::join_values(*iter_master_, *iter_slave_));
+  using value_type = decltype(tuple_utils::join_values(*iter_master_, *iter_slave_));
   using difference_type = std::ptrdiff_t;
-  using reference = decltype(::join_values(std::declval<rng::range_reference_t<V1>>(), std::declval<rng::range_reference_t<V2>>()));
+  using reference = decltype(tuple_utils::join_values(std::declval<rng::range_reference_t<V1>>(), std::declval<rng::range_reference_t<V2>>()));
 
   iterator() = default;
   explicit iterator(cartesian_product_view &cprod) : base_{&cprod}, iter_master_{rng::begin(base_->v1_)}, iter_slave_{rng::begin(base_->v2_)} {}
 
-  reference operator*() const {
-    //return unwrap_tuple(std::make_tuple(*iter_master_, *iter_slave_));
-    return ::join_values(*iter_master_, *iter_slave_);
+  constexpr auto operator*() const {
+    return tuple_utils::join_values(*iter_master_, *iter_slave_);
+  }
+
+  constexpr auto operator*() {
+    return tuple_utils::join_values(*iter_master_, *iter_slave_);
   }
 
   iterator &operator++() {
@@ -109,13 +114,13 @@ namespace std::ranges::views {
 
   struct cartesian_product_fn {
     template<rng::viewable_range R1, rng::viewable_range R2>
-    auto operator() (R1 &&master, R2 &&slave) const{
+    constexpr auto operator() (R1 &&master, R2 &&slave) const{
       return cartesian_product_view<rng::views::all_t<R1>, rng::views::all_t<R2>>(rng::views::all(std::forward<R1>(master)),
                                                                                   rng::views::all(std::forward<R2>(slave)));
     }
 
     template<rng::viewable_range R1, rng::viewable_range ... Rs>
-    auto operator() (R1 &&master, Rs&& ... slaves) const {
+    constexpr auto operator() (R1 &&master, Rs&& ... slaves) const {
       auto slave = this->template operator()(slaves...);
       return cartesian_product_view<rng::views::all_t<R1>, rng::views::all_t<decltype(slave)>>(rng::views::all(std::forward<R1>(master)),
                                                                                                rng::views::all(std::move(slave)));
